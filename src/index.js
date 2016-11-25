@@ -9,19 +9,22 @@
 
 'use strict';
 
-var access =     require('blear.utils.access');
-var easing =     require('blear.utils.easing');
-var typeis =     require('blear.utils.typeis');
-var object =     require('blear.utils.object');
-var time =       require('blear.utils.time');
-var date =       require('blear.utils.date');
-var fun =        require('blear.utils.function');
-var attribute =  require('blear.core.attribute');
+var access = require('blear.utils.access');
+var easing = require('blear.utils.easing');
+var typeis = require('blear.utils.typeis');
+var object = require('blear.utils.object');
+var time = require('blear.utils.time');
+var date = require('blear.utils.date');
+var fun = require('blear.utils.function');
+var string = require('blear.utils.string');
+var attribute = require('blear.core.attribute');
+var layout = require('blear.core.layout');
 
 var defaults = exports.defaults = {
     easing: 'linear',
     duration: 345
 };
+var reScroll = /scroll/;
 
 /**
  * 获取样式
@@ -44,7 +47,7 @@ var setStyles = function (el, styles) {
 };
 
 
-var animation = function (el, options, onTransition, onTransitionEnd) {
+var animation = function (el, options, onAnimation, onAnimationEnd) {
     options = object.assign({}, defaults, options);
 
     var optEasing = options.easing;
@@ -57,13 +60,13 @@ var animation = function (el, options, onTransition, onTransitionEnd) {
             var past = date.now() - startTime;
 
             if (past >= duration) {
-                onTransitionEnd();
+                onAnimationEnd();
                 return;
             }
 
             var timeRatio = past / duration;
 
-            onTransition(ease(timeRatio));
+            onAnimation(ease(timeRatio));
 
             flash();
         });
@@ -74,7 +77,7 @@ var animation = function (el, options, onTransition, onTransitionEnd) {
 
 
 /**
- * 动画
+ * style 动画
  * @param el {HTMLElement} 元素
  * @param to {Object} 终点
  * @param [options] {Object} 配置
@@ -109,25 +112,53 @@ exports.animate = function (el, to, options, callback) {
     var animateMap = {};
 
     object.each(to, function (cssKey, cssVal) {
-        var start = getStyle(el, cssKey);
-        var end = parseFloat(cssVal);
+        var start = 0;
+        var end = 0;
+        var meta = {};
 
-        animateMap[cssKey] = {
-            s: start,
-            l: end - start
-        };
+        if (reScroll.test(cssKey)) {
+            cssKey = string.humprize(cssKey);
+            start = layout[cssKey](el);
+            end = parseFloat(cssVal);
+            meta.p = true;
+        } else {
+            start = getStyle(el, cssKey);
+            end = parseFloat(cssVal);
+        }
+
+        meta.s = start;
+        meta.e = end;
+        meta.l = end - start;
+        animateMap[cssKey] = meta;
     });
 
     animation(el, options, function (ratio) {
         var styles = {};
 
         object.each(animateMap, function (cssKey, meta) {
-            styles[cssKey] = meta.l * ratio + meta.s;
+            var val = meta.l * ratio + meta.s;
+
+            if (meta.p) {
+                layout[cssKey](el, val);
+            } else {
+                styles[cssKey] = val;
+            }
         });
 
         setStyles(el, styles);
     }, function () {
+        var styles = {};
+
+        object.each(animateMap, function (cssKey, meta) {
+            if (meta.p) {
+                layout[cssKey](el, meta.e);
+            } else {
+                styles[cssKey] = meta.e;
+            }
+        });
+
         setStyles(el, to);
         callback();
     });
 };
+
